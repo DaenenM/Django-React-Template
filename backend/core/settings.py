@@ -1,11 +1,16 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # BASE_DIR is the root of the backend folder (one level above this file).
 # Used to build absolute file paths like BASE_DIR / 'db.sqlite3'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# os.environ.get(key, default) reads the value from the .env file (or system environment).
+# load_dotenv reads backend/.env into os.environ so the calls below pick it up.
+# Without this, .env is ignored and Django would use the fallback defaults.
+load_dotenv(BASE_DIR / '.env')
+
+# os.environ.get(key, default) reads from the environment loaded above.
 # If the variable isn't set, the default value is used instead.
 
 # SECRET_KEY is used by Django to sign cookies, sessions, and tokens. Keep it secret in production.
