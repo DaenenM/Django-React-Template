@@ -6,18 +6,25 @@ from .firebase import db
 from .utils import require_auth
 
 
-# Change this to rename the Firestore collection all item endpoints use.
-COLLECTION = 'items'
+# Collections that can never be accessed through the generic CRUD endpoints.
+# Prevents authenticated users from reading or writing internal collections via the URL.
+PROTECTED_COLLECTIONS = {'users'}
 
 # User roles — ordered from least to most privileged.
-# Stored as a string in each user's Firestore document.
 ROLES = ['viewer', 'user', 'staff', 'admin']
 
 
-def _get_doc(item_id):
+def _get_doc(collection, item_id):
     """Returns (doc_ref, doc). Caller checks doc.exists for 404 handling."""
-    doc_ref = db.collection(COLLECTION).document(item_id)
+    doc_ref = db.collection(collection).document(item_id)
     return doc_ref, doc_ref.get()
+
+
+def _check_collection(collection):
+    """Returns a 403 Response if the collection is protected, otherwise None."""
+    if collection in PROTECTED_COLLECTIONS:
+        return Response({'error': f'Access to collection "{collection}" is not allowed.'}, status=status.HTTP_403_FORBIDDEN)
+    return None
 
 
 # ── User Profile ──────────────────────────────────────────────────────────────
@@ -55,11 +62,10 @@ def create_user_profile(request):
     doc = doc_ref.get()
 
     if doc.exists:
-        # Returning user (e.g. Google sign-in after first time).
-        # Only update email — never reset XP, coins, or role.
+        # Returning user — only update email, never reset XP, coins, or role.
         doc_ref.update({'email': request.data.get('email', request.decoded_token.get('email', ''))})
     else:
-        # Brand new user — set up the full profile with defaults.
+        # New user — set up full profile with defaults.
         doc_ref.set({
             'uid': uid,
             'username': request.data.get('username', request.decoded_token.get('name', '')),
@@ -73,13 +79,18 @@ def create_user_profile(request):
     return Response({'message': 'Profile synced'}, status=status.HTTP_201_CREATED)
 
 
-# ── Items ─────────────────────────────────────────────────────────────────────
+# ── Generic Collection CRUD ───────────────────────────────────────────────────
+# The collection name comes from the URL parameter, not a hardcoded constant.
+# To use a different collection, just change the URL: /api/products/, /api/orders/, etc.
 
 @api_view(['GET'])
 @require_auth
-def get_items(request):
+def get_items(request, collection):
+    guard = _check_collection(collection)
+    if guard:
+        return guard
     items = []
-    for doc in db.collection(COLLECTION).stream():
+    for doc in db.collection(collection).stream():
         item = doc.to_dict()
         item['id'] = doc.id
         items.append(item)
@@ -88,8 +99,11 @@ def get_items(request):
 
 @api_view(['GET'])
 @require_auth
-def get_item(request, item_id):
-    _, doc = _get_doc(item_id)
+def get_item(request, collection, item_id):
+    guard = _check_collection(collection)
+    if guard:
+        return guard
+    _, doc = _get_doc(collection, item_id)
     if not doc.exists:
         return Response({'error': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
     return Response({**doc.to_dict(), 'id': doc.id})
@@ -97,15 +111,21 @@ def get_item(request, item_id):
 
 @api_view(['POST'])
 @require_auth
-def add_item(request):
-    doc_ref = db.collection(COLLECTION).add(request.data)
+def add_item(request, collection):
+    guard = _check_collection(collection)
+    if guard:
+        return guard
+    doc_ref = db.collection(collection).add(request.data)
     return Response({'id': doc_ref[1].id}, status=status.HTTP_201_CREATED)
 
 
 @api_view(['PUT'])
 @require_auth
-def replace_item(request, item_id):
-    doc_ref, doc = _get_doc(item_id)
+def replace_item(request, collection, item_id):
+    guard = _check_collection(collection)
+    if guard:
+        return guard
+    doc_ref, doc = _get_doc(collection, item_id)
     if not doc.exists:
         return Response({'error': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
     doc_ref.set(request.data)
@@ -114,8 +134,11 @@ def replace_item(request, item_id):
 
 @api_view(['PATCH'])
 @require_auth
-def update_item(request, item_id):
-    doc_ref, doc = _get_doc(item_id)
+def update_item(request, collection, item_id):
+    guard = _check_collection(collection)
+    if guard:
+        return guard
+    doc_ref, doc = _get_doc(collection, item_id)
     if not doc.exists:
         return Response({'error': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
     doc_ref.update(request.data)
@@ -124,8 +147,11 @@ def update_item(request, item_id):
 
 @api_view(['DELETE'])
 @require_auth
-def delete_item(request, item_id):
-    doc_ref, doc = _get_doc(item_id)
+def delete_item(request, collection, item_id):
+    guard = _check_collection(collection)
+    if guard:
+        return guard
+    doc_ref, doc = _get_doc(collection, item_id)
     if not doc.exists:
         return Response({'error': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
     doc_ref.delete()

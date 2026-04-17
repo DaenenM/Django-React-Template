@@ -6,7 +6,7 @@ import Spinner from '../components/Spinner';
 export default function Home() {
     // useItems() handles all data fetching and mutations via TanStack Query.
     // Components don't need to know about Axios or API URLs — that's all inside the hook.
-    const { items, isLoading, addItem, updateItem, deleteItem } = useItems();
+    const { items, isLoading, addItem, updateItem, deleteItem } = useItems('items');
 
     return (
         <div className="w-full max-w-xl">
